@@ -1,0 +1,411 @@
+# Instincts generated from https://github.com/ejoliet/wallcast
+# Generated: 2026-07-06T15:25:53.216Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: wallcast-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix, feat
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: feat: implement wallcast P2P photo wall, fix: address code review and CodeQL findings
+
+---
+id: wallcast-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Commit Length
+
+## Action
+
+Keep commit messages concise (~41 characters)
+
+## Evidence
+
+- Average commit message length: 41 chars
+- Based on 3 commits
+
+---
+id: wallcast-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: wallcast-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: wallcast-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: wallcast-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: wallcast-workflow-feature-implementation-and-review-cycle
+trigger: "when doing feature implementation and review cycle"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Workflow Feature Implementation And Review Cycle
+
+## Action
+
+Follow the feature-implementation-and-review-cycle workflow:
+1. Implement feature across relevant files (HTML, JS, README, etc.)
+2. Commit initial implementation
+3. Review code (internally or via automated tools like CodeQL)
+4. Address review findings: fix bugs, improve security, clarify comments, update documentation
+5. Commit fixes and improvements
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: README.md, join.html, keys/gen.js
+
+---
+id: wallcast-workflow-multi-file-minor-fix-pass
+trigger: "when doing multi file minor fix pass"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/ejoliet/wallcast
+---
+
+# Wallcast Workflow Multi File Minor Fix Pass
+
+## Action
+
+Follow the multi-file-minor-fix-pass workflow:
+1. Identify minor issues or improvements across multiple files (e.g., error messages, comments, warnings)
+2. Apply targeted fixes and clarifications
+3. Commit all minor changes together
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: join.html, keys/gen.js, wall.html
+
+---
+id: wallcast-instinct-file-naming-camelCase
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct File Naming CamelCase
+
+## Action
+
+Name the file using camelCase (e.g., myFile.js)
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Observed in keys/gen.js
+
+---
+id: wallcast-instinct-function-naming-camelCase
+trigger: "When defining a new function"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Function Naming CamelCase
+
+## Action
+
+Name the function using camelCase (e.g., processPhoto())
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: wallcast-instinct-class-naming-PascalCase
+trigger: "When creating a new class"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Class Naming PascalCase
+
+## Action
+
+Name the class using PascalCase (e.g., PhotoWall)
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: wallcast-instinct-constant-naming-screaming-snake-case
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Constant Naming Screaming Snake Case
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MAX_PHOTOS)
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: wallcast-instinct-import-style-relative
+trigger: "When importing modules in JavaScript files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Import Style Relative
+
+## Action
+
+Use relative import paths (e.g., './utils.js')
+
+## Evidence
+
+- Pattern in importStyle
+- Seen in keys/gen.js
+
+---
+id: wallcast-instinct-export-style-named
+trigger: "When exporting functions or variables"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Export Style Named
+
+## Action
+
+Use named exports (e.g., export { myFunc })
+
+## Evidence
+
+- Pattern in exportStyle
+
+---
+id: wallcast-instinct-error-handling-try-catch
+trigger: "When handling potential errors in JavaScript code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Error Handling Try Catch
+
+## Action
+
+Wrap error-prone code in try-catch blocks
+
+## Evidence
+
+- Pattern in errorHandling.style
+- Seen in keys/gen.js
+
+---
+id: wallcast-instinct-test-location-separate
+trigger: "When adding or updating tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Test Location Separate
+
+## Action
+
+Place test files in a separate directory from source code
+
+## Evidence
+
+- Pattern in architecture.testLocation
+
+---
+id: wallcast-instinct-git-commit-conventional-prefix
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Git Commit Conventional Prefix
+
+## Action
+
+Start the commit message with a conventional prefix (e.g., 'feat:' or 'fix:')
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Seen in 'feat: implement wallcast P2P photo wall'
+
+---
+id: wallcast-instinct-git-commit-length-40
+trigger: "When composing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Git Commit Length 40
+
+## Action
+
+Keep the commit message concise, around 40 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: wallcast-instinct-feature-implementation-and-review-cycle
+trigger: "When developing a new feature or making a major change"
+confidence: 0.92
+domain: workflow
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Feature Implementation And Review Cycle
+
+## Action
+
+Implement the feature across relevant files, commit, review (internally or via CodeQL), address findings, and commit fixes
+
+## Evidence
+
+- Workflow: feature-implementation-and-review-cycle
+- Commits: 'feat: implement wallcast P2P photo wall', 'fix: address code review and CodeQL findings'
+
+---
+id: wallcast-instinct-multi-file-minor-fix-pass
+trigger: "When minor issues or improvements are identified after implementation or review"
+confidence: 0.87
+domain: workflow
+source: repo-analysis
+source_repo: ejoliet/wallcast
+---
+
+# Wallcast Instinct Multi File Minor Fix Pass
+
+## Action
+
+Apply targeted fixes and clarifications across multiple files and commit all minor changes together
+
+## Evidence
+
+- Workflow: multi-file-minor-fix-pass
+- Commits: 'fix: address final code review comments'
+
