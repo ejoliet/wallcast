@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Wallcast – Join</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 28px 20px 24px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.app-head { margin-bottom: 24px; }
+.app-head h1 { font-size: 24px; letter-spacing: -0.5px; }
+.app-head .sub { font-size: 13px; color: #8b949e; margin-top: 3px; }
+
+/* ── Inputs ─────────────────────────────────────────────────────────────────── */
+.field { margin-bottom: 16px; }
+.field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8b949e;
+  margin-bottom: 7px;
+}
+.field input {
+  width: 100%;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 13px 14px;
+  border-radius: 8px;
+  font-size: 17px;
+  outline: none;
+  transition: border-color 0.18s;
+  -webkit-appearance: none;
+}
+.field input:focus { border-color: #388bfd; }
+.field input::placeholder { color: #484f58; }
+
+/* room code: uppercase mono */
+#room-input {
+  letter-spacing: 5px;
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  width: 100%;
+  padding: 14px;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-appearance: none;
+  margin-top: 4px;
+}
+.btn-primary:hover:not(:disabled) { background: #2ea043; }
+.btn-primary:disabled { background: #21262d; color: #484f58; cursor: default; }
+
+/* ── Status row ──────────────────────────────────────────────────────────────── */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8b949e;
+  margin-top: 14px;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #484f58;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.dot.green  { background: #3fb950; }
+.dot.orange { background: #e3b341; }
+.dot.red    { background: #f85149; }
+
+/* ── Send screen ─────────────────────────────────────────────────────────────── */
+#send-screen { display: none; flex-direction: column; gap: 18px; }
+#send-screen.active { display: flex; }
+
+.send-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.send-header h1 { font-size: 22px; }
+.send-header .room-tag {
+  font-size: 12px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 20px;
+  padding: 4px 11px;
+  letter-spacing: 1px;
+  font-family: monospace;
+}
+
+/* ── Action buttons (camera / gallery) ──────────────────────────────────────── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 22px 10px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  color: #e6edf3;
+  font-size: 15px;
+  font-weight: 500;
+  -webkit-appearance: none;
+  user-select: none;
+}
+.action-tile:hover { background: #1c2128; border-color: #3fb950; }
+.action-tile .icon { font-size: 34px; line-height: 1; }
+
+/* ── Preview ─────────────────────────────────────────────────────────────────── */
+#preview-wrap { display: none; }
+#preview-wrap.active { display: block; }
+
+#preview-img {
+  width: 100%;
+  border-radius: 10px;
+  max-height: 52vh;
+  object-fit: contain;
+  background: #161b22;
+  display: block;
+}
+
+.preview-btns {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+.preview-btns button {
+  flex: 1;
+  padding: 13px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+#btn-send   { background: #238636; color: #fff; }
+#btn-send:hover { background: #2ea043; }
+#btn-send:disabled { background: #21262d; color: #484f58; cursor: default; }
+#btn-retake { background: #21262d; color: #e6edf3; }
+#btn-retake:hover { background: #30363d; }
+
+/* ── Progress ────────────────────────────────────────────────────────────────── */
+#progress-wrap { display: none; }
+#progress-wrap.active { display: block; }
+
+.prog-label { font-size: 13px; color: #8b949e; margin-bottom: 7px; }
+.prog-track { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+.prog-fill  { height: 100%; background: #3fb950; border-radius: 3px; width: 0%; transition: width 0.08s linear; }
+.prog-pct   { font-size: 11px; color: #484f58; margin-top: 5px; text-align: right; }
+
+/* ── Flash messages ──────────────────────────────────────────────────────────── */
+.flash { display: none; border-radius: 8px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
+.flash.ok  { display: block; background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #56d364; }
+.flash.err { display: block; background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: #ff7b72; }
+
+/* ── Nickname strip on send screen ──────────────────────────────────────────── */
+.nick-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #8b949e;
+}
+.nick-strip input {
+  flex: 1;
+  background: #161b22;
+  border: 1px solid #30363d;
+  color: #e6edf3;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  outline: none;
+}
+.nick-strip input:focus { border-color: #388bfd; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────────── */
+.footer { margin-top: auto; padding-top: 24px; text-align: center; font-size: 11px; color: #30363d; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Join screen ──────────────────────────────────────────────────────── -->
+  <div id="join-screen">
+    <div class="app-head">
+      <h1>📸 wallcast</h1>
+      <p class="sub">Join a live photo wall</p>
+    </div>
+
+    <div class="field">
+      <label>Room Code</label>
+      <input id="room-input" type="text" inputmode="text"
+        placeholder="ABC123" maxlength="6"
+        autocapitalize="characters" autocorrect="off" spellcheck="false">
+    </div>
+
+    <div class="field">
+      <label>Nickname <span style="color:#484f58;font-size:10px;letter-spacing:0">(optional)</span></label>
+      <input id="nickname-input" type="text" placeholder="Your name" maxlength="32" autocorrect="off">
+    </div>
+
+    <button class="btn-primary" id="btn-join">Join Wall →</button>
+
+    <div class="status-row">
+      <div class="dot" id="join-dot"></div>
+      <span id="join-status">Enter the 6-character room code</span>
+    </div>
+  </div>
+
+  <!-- ── Send screen ──────────────────────────────────────────────────────── -->
+  <div id="send-screen">
+    <div class="send-header">
+      <h1>📸 wallcast</h1>
+      <div class="status-row" style="margin-top:0">
+        <div class="dot" id="conn-dot"></div>
+        <span id="conn-status">Connected</span>
+      </div>
+    </div>
+
+    <div class="room-tag" id="room-tag" style="display:inline-block;font-size:13px;padding:5px 13px"></div>
+
+    <!-- Camera / gallery buttons -->
+    <div class="action-grid">
+      <!-- AIDEV- capture="environment" opens rear camera directly on iOS/Android;
+           falls back to file picker if camera unavailable -->
+      <label class="action-tile" for="camera-input">
+        <span class="icon">📷</span>
+        Take Photo
+        <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="action-tile" for="gallery-input">
+        <span class="icon">🖼</span>
+        Gallery
+        <input type="file" id="gallery-input" accept="image/*" hidden>
+      </label>
+    </div>
+
+    <!-- Nickname (editable after join) -->
+    <div class="nick-strip">
+      <span>As:</span>
+      <input id="nick-display" type="text" placeholder="Anonymous" maxlength="32" autocorrect="off">
+    </div>
+
+    <!-- Preview -->
+    <div id="preview-wrap">
+      <img id="preview-img" alt="Preview">
+      <div class="preview-btns">
+        <button id="btn-retake">↩ Retake</button>
+        <button id="btn-send">Send to Wall ↗</button>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div id="progress-wrap">
+      <div class="prog-label">Sending…</div>
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      <div class="prog-pct"  id="prog-pct">0%</div>
+    </div>
+
+    <!-- Flash -->
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <div class="footer">made with wallcast</div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CHUNK_SIZE          = 16 * 1024;       // 16 KB — safe SCTP message size
+const BACKPRESSURE_PAUSE  = 1024 * 1024;     // 1 MB  — stop sending
+const BACKPRESSURE_RESUME = 256  * 1024;     // 256 KB — resume sending
+const MAX_LONG_EDGE       = 1920;
+const JPEG_QUALITY        = 0.8;
+const PEER_PREFIX         = 'wc-';
+const LS_NS               = 'wc.';
+const RECONNECT_BASE      = 2000;            // ms
+const RECONNECT_CAP       = 30000;           // ms
+
+// ── localStorage helper ───────────────────────────────────────────────────────
+const store = (() => {
+  const mem = {};
+  let ok = false;
+  try { localStorage.setItem('wc.__t','1'); localStorage.removeItem('wc.__t'); ok = true; } catch {}
+  return {
+    get(k)    { try { return ok ? JSON.parse(localStorage.getItem(LS_NS+k)) : mem[k]??null; } catch { return null; } },
+    set(k, v) { try { ok ? localStorage.setItem(LS_NS+k, JSON.stringify(v)) : (mem[k]=v); } catch {} }
+  };
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let peer              = null;
+let conn              = null;
+let roomCode          = null;
+let pendingBlob       = null;
+let isSending         = false;
+let reconnectAttempts = 0;
+let reconnectTimer    = null;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const joinScreenEl  = document.getElementById('join-screen');
+const sendScreenEl  = document.getElementById('send-screen');
+const roomInputEl   = document.getElementById('room-input');
+const nicknameEl    = document.getElementById('nickname-input');
+const btnJoinEl     = document.getElementById('btn-join');
+const joinDotEl     = document.getElementById('join-dot');
+const joinStatusEl  = document.getElementById('join-status');
+const connDotEl     = document.getElementById('conn-dot');
+const connStatusEl  = document.getElementById('conn-status');
+const roomTagEl     = document.getElementById('room-tag');
+const nickDisplayEl = document.getElementById('nick-display');
+const previewWrapEl = document.getElementById('preview-wrap');
+const previewImgEl  = document.getElementById('preview-img');
+const progressWrapEl= document.getElementById('progress-wrap');
+const progFillEl    = document.getElementById('prog-fill');
+const progPctEl     = document.getElementById('prog-pct');
+const flashEl       = document.getElementById('flash');
+const btnSendEl     = document.getElementById('btn-send');
+const btnRetakeEl   = document.getElementById('btn-retake');
+const cameraInputEl = document.getElementById('camera-input');
+const galleryInputEl= document.getElementById('gallery-input');
+
+// ── URL params ────────────────────────────────────────────────────────────────
+function roomFromUrl() {
+  return new URLSearchParams(location.search).get('room');
+}
+
+// ── Image downscale ────────────────────────────────────────────────────────────
+// AIDEV- canvas-based downscale before send reduces a typical 8 MP JPEG from
+// ~5 MB to ~1–2 MB. iOS Safari requires the Image to fully load before drawing;
+// calling drawImage in onload ensures the pixel data is available on all platforms.
+function downscaleImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const src = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(src);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX_LONG_EDGE || h > MAX_LONG_EDGE) {
+        if (w >= h) { h = Math.round(h * MAX_LONG_EDGE / w); w = MAX_LONG_EDGE; }
+        else        { w = Math.round(w * MAX_LONG_EDGE / h); h = MAX_LONG_EDGE; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else      reject(new Error('Canvas toBlob failed'));
+      }, 'image/jpeg', JPEG_QUALITY);
+    };
+    img.onerror = () => { URL.revokeObjectURL(src); reject(new Error('Image load failed')); };
+    img.src = src;
+  });
+}
+
+// ── Chunked send with backpressure ────────────────────────────────────────────
+// AIDEV- DataChannel messages are capped at ~16 KB on most browser/OS SCTP stacks.
+// We chunk the ArrayBuffer manually and monitor bufferedAmount to avoid filling the
+// send buffer (which can cause tab OOM or silent drops on some mobile browsers).
+// Pause threshold 1 MB / resume 256 KB chosen empirically for stability.
+async function sendPhoto(blob, onProgress) {
+  const ab          = await blob.arrayBuffer();
+  const totalChunks = Math.ceil(ab.byteLength / CHUNK_SIZE);
+  const photoId     = crypto.randomUUID();
+  const nick        = nickDisplayEl.value.trim() || null;
+
+  conn.send({ type: 'photo-start', id: photoId, totalChunks, size: ab.byteLength, nick });
+
+  for (let i = 0; i < totalChunks; i++) {
+    // AIDEV- backpressure: spin-yield until DataChannel buffer drains
+    if (conn.dataChannel) {
+      while (conn.dataChannel.bufferedAmount > BACKPRESSURE_PAUSE) {
+        await sleep(25);
+      }
+    }
+    conn.send({
+      type:  'photo-chunk',
+      id:    photoId,
+      index: i,
+      data:  ab.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, ab.byteLength))
+    });
+    onProgress((i + 1) / totalChunks);
+  }
+
+  conn.send({ type: 'photo-end', id: photoId });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Progress bar ──────────────────────────────────────────────────────────────
+function setProgress(ratio) {
+  const pct = Math.round(ratio * 100);
+  progFillEl.style.width = pct + '%';
+  progPctEl.textContent  = pct + '%';
+}
+
+// ── Flash messages ────────────────────────────────────────────────────────────
+let _flashTimer;
+function showFlash(msg, type = 'ok') {
+  flashEl.className   = 'flash ' + type;
+  flashEl.textContent = msg;
+  if (type === 'ok') {
+    clearTimeout(_flashTimer);
+    _flashTimer = setTimeout(() => { flashEl.className = 'flash'; }, 3500);
+  }
+}
+
+// ── Connection status ─────────────────────────────────────────────────────────
+function setConnState(state) {
+  const map = {
+    connecting:   { dot: 'orange', text: 'Connecting…'   },
+    connected:    { dot: 'green',  text: 'Connected'      },
+    reconnecting: { dot: 'orange', text: 'Reconnecting…'  },
+    disconnected: { dot: 'red',    text: 'Disconnected'   }
+  };
+  const s = map[state] || map.disconnected;
+  connDotEl.className    = 'dot ' + s.dot;
+  connStatusEl.textContent = s.text;
+}
+
+// ── PeerJS ────────────────────────────────────────────────────────────────────
+function openPeer(onReady) {
+  if (peer && !peer.destroyed) { onReady(); return; }
+  const guestId = `${PEER_PREFIX}g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
+  peer = new Peer(guestId, { debug: 0 });
+
+  peer.on('open', onReady);
+
+  peer.on('error', err => {
+    console.warn('[wallcast] peer error:', err.type, err.message);
+    setConnState('disconnected');
+    showFlash('Peer error: ' + (err.message || err.type), 'err');
+  });
+
+  peer.on('disconnected', () => {
+    // AIDEV- restore signaling without destroying active DataConnections
+    peer.reconnect();
+  });
+}
+
+function connectToWall(rc) {
+  setConnState('connecting');
+  conn = peer.connect(PEER_PREFIX + rc, { reliable: true, serialization: 'binary' });
+
+  conn.on('open', () => {
+    reconnectAttempts = 0;
+    clearTimeout(reconnectTimer);
+    setConnState('connected');
+    showSendScreen(rc);
+  });
+
+  conn.on('error', err => {
+    console.warn('[wallcast] conn error:', err);
+    setConnState('disconnected');
+    showFlash('Connection error — retrying…', 'err');
+    scheduleReconnect(rc);
+  });
+
+  conn.on('close', () => {
+    setConnState('disconnected');
+    scheduleReconnect(rc);
+  });
+}
+
+// AIDEV- exponential backoff reconnect: 2 s, 4 s, 8 s … capped at 30 s.
+// Guests self-heal after a wall tab refresh or network blip.
+function scheduleReconnect(rc) {
+  clearTimeout(reconnectTimer);
+  const delay = Math.min(RECONNECT_BASE * (2 ** reconnectAttempts), RECONNECT_CAP);
+  reconnectAttempts++;
+  setConnState('reconnecting');
+  reconnectTimer = setTimeout(() => {
+    if (!peer || peer.destroyed) openPeer(() => connectToWall(rc));
+    else connectToWall(rc);
+  }, delay);
+}
+
+// ── Screen transitions ────────────────────────────────────────────────────────
+function setJoinStatus(msg, dotClass) {
+  joinStatusEl.textContent = msg;
+  joinDotEl.className      = 'dot ' + (dotClass || '');
+}
+
+function showSendScreen(rc) {
+  joinScreenEl.style.display = 'none';
+  sendScreenEl.classList.add('active');
+  roomTagEl.textContent  = 'Room ' + rc;
+  nickDisplayEl.value    = store.get('nickname') || nicknameEl.value.trim() || '';
+}
+
+function showPreview(blob) {
+  pendingBlob = blob;
+  const url   = URL.createObjectURL(blob);
+  previewImgEl.onload = () => URL.revokeObjectURL(url);
+  previewImgEl.src    = url;
+  previewWrapEl.classList.add('active');
+  flashEl.className   = 'flash';
+}
+
+function clearPreview() {
+  pendingBlob = null;
+  previewImgEl.src = '';
+  previewWrapEl.classList.remove('active');
+  progressWrapEl.classList.remove('active');
+}
+
+// ── File handling ─────────────────────────────────────────────────────────────
+async function handleFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  try {
+    const scaled = await downscaleImage(file);
+    showPreview(scaled);
+  } catch (e) {
+    showFlash('Could not load image: ' + e.message, 'err');
+  }
+}
+
+cameraInputEl.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+galleryInputEl.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+
+// ── Send ──────────────────────────────────────────────────────────────────────
+btnSendEl.addEventListener('click', async () => {
+  if (!pendingBlob || isSending) return;
+  if (!conn || !conn.open) {
+    showFlash('Not connected — please wait for reconnect', 'err');
+    return;
+  }
+
+  isSending            = true;
+  btnSendEl.disabled   = true;
+  btnRetakeEl.disabled = true;
+  progressWrapEl.classList.add('active');
+  setProgress(0);
+  flashEl.className = 'flash';
+
+  try {
+    await sendPhoto(pendingBlob, r => setProgress(r));
+    setProgress(1);
+    setTimeout(() => {
+      clearPreview();
+      showFlash('✅ Photo sent to wall!');
+      isSending            = false;
+      btnSendEl.disabled   = false;
+      btnRetakeEl.disabled = false;
+      cameraInputEl.value  = '';
+      galleryInputEl.value = '';
+      // Save current nickname
+      store.set('nickname', nickDisplayEl.value.trim() || null);
+    }, 350);
+  } catch (e) {
+    progressWrapEl.classList.remove('active');
+    showFlash('Send failed: ' + e.message, 'err');
+    isSending            = false;
+    btnSendEl.disabled   = false;
+    btnRetakeEl.disabled = false;
+  }
+});
+
+btnRetakeEl.addEventListener('click', () => {
+  clearPreview();
+  flashEl.className    = 'flash';
+  cameraInputEl.value  = '';
+  galleryInputEl.value = '';
+});
+
+// ── Join form ─────────────────────────────────────────────────────────────────
+function doJoin(rc) {
+  rc = rc.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (rc.length !== 6) {
+    setJoinStatus('Room code must be 6 characters', 'red');
+    return;
+  }
+  roomCode = rc;
+  store.set('lastRoom', rc);
+  store.set('nickname', nicknameEl.value.trim() || null);
+  setJoinStatus('Connecting…', 'orange');
+  openPeer(() => connectToWall(rc));
+}
+
+btnJoinEl.addEventListener('click', () => doJoin(roomInputEl.value.trim()));
+roomInputEl.addEventListener('keydown', e => { if (e.key === 'Enter') btnJoinEl.click(); });
+nicknameEl.addEventListener('keydown',  e => { if (e.key === 'Enter') btnJoinEl.click(); });
+
+// Force uppercase as user types room code
+roomInputEl.addEventListener('input', () => {
+  const pos = roomInputEl.selectionStart;
+  roomInputEl.value = roomInputEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  roomInputEl.setSelectionRange(pos, pos);
+});
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+(function init() {
+  const urlRoom   = roomFromUrl();
+  const savedRoom = store.get('lastRoom');
+  const savedNick = store.get('nickname');
+
+  if (savedNick) nicknameEl.value = savedNick;
+
+  if (urlRoom) {
+    const rc = urlRoom.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    roomInputEl.value = rc;
+    if (rc.length === 6) { doJoin(rc); return; }
+  } else if (savedRoom) {
+    roomInputEl.value = savedRoom;
+  }
+})();
+</script>
+</body>
+</html>

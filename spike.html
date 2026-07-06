@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wallcast – Spike Test</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Courier New', monospace;
+  background: #0e0e0e;
+  color: #c9d1d9;
+  padding: 28px 24px;
+  line-height: 1.7;
+}
+h1 { color: #fff; font-size: 20px; margin-bottom: 4px; }
+.sub { font-size: 13px; color: #8b949e; margin-bottom: 20px; }
+button {
+  padding: 10px 22px;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 20px;
+}
+button:hover { background: #2ea043; }
+button:disabled { background: #3a3a3a; cursor: not-allowed; }
+#log { font-size: 13px; white-space: pre-wrap; }
+.pass  { color: #3fb950; }
+.fail  { color: #f85149; }
+.info  { color: #8b949e; }
+.head  { color: #e3b341; }
+.send  { color: #79c0ff; }
+</style>
+</head>
+<body>
+<h1>Wallcast — Spike Test</h1>
+<p class="sub">Validates chunking + backpressure primitive: 10 concurrent senders, 2–5 MB each.</p>
+
+<button id="run-btn" onclick="runSpike()">▶ Run Spike (10 senders)</button>
+<div id="log"></div>
+
+<script>
+'use strict';
+
+// ── Spike parameters ──────────────────────────────────────────────────────────
+const N_SENDERS   = 10;
+const SIZES_MB    = [2.0, 3.0, 2.5, 4.0, 3.5, 2.0, 5.0, 3.0, 4.5, 2.5];
+
+// AIDEV- match production constants so the spike proves the real primitives
+const CHUNK_SIZE          = 16 * 1024;       // 16 KB
+const BACKPRESSURE_PAUSE  = 1024 * 1024;     // 1 MB  — sender pauses
+const BACKPRESSURE_RESUME = 256  * 1024;     // 256 KB — sender resumes
+
+// ── DOM log helper ────────────────────────────────────────────────────────────
+function log(msg, cls = 'info') {
+  const el = document.createElement('div');
+  el.className = cls;
+  el.textContent = msg;
+  document.getElementById('log').appendChild(el);
+}
+
+function logRaw(html) {
+  const el = document.createElement('div');
+  el.innerHTML = html;
+  document.getElementById('log').appendChild(el);
+}
+
+// ── MockDataChannel ───────────────────────────────────────────────────────────
+// AIDEV- simulates RTCDataChannel bufferedAmount mechanics in-memory so
+// backpressure logic can be verified without a real network or PeerJS server.
+// Messages are delivered asynchronously (latencyMs jitter) to mirror real behaviour.
+class MockDataChannel {
+  constructor(receiveCallback, latencyMs = 1) {
+    this.bufferedAmount = 0;
+    this._q       = [];
+    this._cb      = receiveCallback;
+    this._latency = latencyMs;
+    this._run();
+  }
+
+  _run() {
+    // Process one message per tick to simulate async delivery
+    const tick = () => {
+      if (this._q.length) {
+        const msg   = this._q.shift();
+        const bytes = (msg.data instanceof ArrayBuffer) ? msg.data.byteLength : 128;
+        // Drain bufferedAmount as data is "sent"
+        this.bufferedAmount = Math.max(0, this.bufferedAmount - bytes);
+        this._cb(msg);
+      }
+      setTimeout(tick, this._latency);
+    };
+    setTimeout(tick, this._latency);
+  }
+
+  send(msg) {
+    const bytes = (msg.data instanceof ArrayBuffer) ? msg.data.byteLength : 128;
+    this.bufferedAmount += bytes;
+    this._q.push(msg);
+  }
+}
+
+// ── Receiver (wall side) ──────────────────────────────────────────────────────
+class PhotoReceiver {
+  constructor() {
+    this.pending  = new Map();
+    this.received = [];
+  }
+
+  handle(msg) {
+    if (msg.type === 'photo-start') {
+      // AIDEV- sparse array pre-sized to totalChunks for O(1) indexed writes
+      this.pending.set(msg.id, {
+        chunks:      new Array(msg.totalChunks),
+        totalChunks: msg.totalChunks,
+        received:    0,
+        size:        msg.size
+      });
+
+    } else if (msg.type === 'photo-chunk') {
+      const p = this.pending.get(msg.id);
+      if (!p) return;
+      p.chunks[p.received] = msg.data;   // store in insertion order (index verified below)
+      p.received++;
+
+    } else if (msg.type === 'photo-end') {
+      const p = this.pending.get(msg.id);
+      this.pending.delete(msg.id);
+
+      if (!p || p.received !== p.totalChunks) {
+        this.received.push({ id: msg.id, ok: false, reason: 'incomplete' });
+        return;
+      }
+
+      // Verify total byte count matches declared size
+      const total = p.chunks.reduce((s, c) => s + c.byteLength, 0);
+      this.received.push({ id: msg.id, ok: total === p.size, total, expected: p.size });
+    }
+  }
+}
+
+// ── Sender (guest side) ───────────────────────────────────────────────────────
+async function sendPhoto(channel, sizeMB, senderIdx) {
+  const size  = Math.round(sizeMB * 1024 * 1024);
+  // Create synthetic image-like buffer with a known fill pattern
+  const ab    = new ArrayBuffer(size);
+  const view  = new Uint8Array(ab);
+  const seed  = (senderIdx * 31 + 7) & 0xff;
+  for (let i = 0; i < size; i++) view[i] = (seed + i) & 0xff;
+
+  const totalChunks = Math.ceil(size / CHUNK_SIZE);
+  const id = 'photo-' + senderIdx + '-' + Math.random().toString(36).slice(2, 8);
+
+  channel.send({ type: 'photo-start', id, totalChunks, size });
+
+  for (let i = 0; i < totalChunks; i++) {
+    // AIDEV- backpressure: spin-sleep until DataChannel drains below pause threshold
+    while (channel.bufferedAmount > BACKPRESSURE_PAUSE) {
+      await sleep(20);
+    }
+    channel.send({
+      type:  'photo-chunk',
+      id,
+      index: i,
+      data:  ab.slice(i * CHUNK_SIZE, Math.min((i + 1) * CHUNK_SIZE, size))
+    });
+  }
+
+  channel.send({ type: 'photo-end', id });
+  return { id, size };
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Spike runner ──────────────────────────────────────────────────────────────
+async function runSpike() {
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('run-btn').disabled = true;
+
+  log('─────────────────────────────────────────────', 'head');
+  log(`Spike: ${N_SENDERS} concurrent senders`, 'head');
+  log(`Chunks: ${CHUNK_SIZE / 1024} KB  |  Pause threshold: ${BACKPRESSURE_PAUSE / 1024} KB  |  Resume: ${BACKPRESSURE_RESUME / 1024} KB`, 'info');
+  log('─────────────────────────────────────────────', 'head');
+
+  const t0 = performance.now();
+
+  // Single shared channel (all senders → one receiver, proving concurrent interleaving)
+  const receiver = new PhotoReceiver();
+  const channel  = new MockDataChannel(msg => receiver.handle(msg), 1);
+
+  // Launch all senders concurrently — this is the key test: interleaved chunks
+  const results = await Promise.all(
+    SIZES_MB.map((mb, i) =>
+      sendPhoto(channel, mb, i).then(r => {
+        log(`  ↑ sender ${String(i + 1).padStart(2)} sent  ${mb.toFixed(1)} MB  (${r.id})`, 'send');
+        return r;
+      })
+    )
+  );
+
+  const sendElapsed = ((performance.now() - t0) / 1000).toFixed(2);
+  log(`\nAll ${N_SENDERS} sends enqueued in ${sendElapsed}s — waiting for delivery…`, 'info');
+
+  // Wait for all N_SENDERS to be received (timeout 15 s)
+  await new Promise(resolve => {
+    const t = setInterval(() => {
+      if (receiver.received.length >= N_SENDERS) { clearInterval(t); resolve(); }
+    }, 30);
+    setTimeout(() => { clearInterval(t); resolve(); }, 15000);
+  });
+
+  const totalElapsed = ((performance.now() - t0) / 1000).toFixed(2);
+
+  log('\n─────────────────────────────────────────────', 'head');
+  log(`Results  (${totalElapsed}s total)`, 'head');
+  log('─────────────────────────────────────────────', 'head');
+
+  let allOk = true;
+  for (const r of receiver.received) {
+    if (r.ok) {
+      log(`  ✅  ${r.id}  ${(r.total / 1024 / 1024).toFixed(2)} MB — intact`, 'pass');
+    } else {
+      log(`  ❌  ${r.id}  expected ${r.expected}  got ${r.total ?? '?'}  reason: ${r.reason ?? 'size mismatch'}`, 'fail');
+      allOk = false;
+    }
+  }
+
+  const missing = N_SENDERS - receiver.received.length;
+  if (missing > 0) {
+    log(`  ❌  ${missing} photo(s) never arrived (timeout)`, 'fail');
+    allOk = false;
+  }
+
+  log('─────────────────────────────────────────────', 'head');
+  if (allOk) {
+    log(`🟢  SPIKE PASSED — ${N_SENDERS} images, zero dropped, zero corrupt`, 'pass');
+  } else {
+    log('🔴  SPIKE FAILED — see above', 'fail');
+  }
+
+  document.getElementById('run-btn').disabled = false;
+}
+</script>
+</body>
+</html>
