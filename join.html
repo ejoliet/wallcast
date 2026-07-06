@@ -408,7 +408,15 @@ function downscaleImage(file) {
 async function sendPhoto(blob, onProgress) {
   const ab          = await blob.arrayBuffer();
   const totalChunks = Math.ceil(ab.byteLength / CHUNK_SIZE);
-  const photoId     = crypto.randomUUID();
+  //const photoId     = crypto.randomUUID();
+  // AIDEV-NOTE: crypto.randomUUID requires a secure context (HTTPS/localhost);
+// crypto.getRandomValues works everywhere, so use it for the short random suffix.
+const photoId = (prefix) => {
+  const bytes = new Uint8Array(4)
+  crypto.getRandomValues(bytes)
+  const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+  return `${prefix}-${hex}`
+}
   const nick        = nickDisplayEl.value.trim() || null;
 
   // Register before photo-start so an early photo-rejected (too-large / busy)
