@@ -193,8 +193,9 @@ html, body {
 
 /* ── Flash messages ──────────────────────────────────────────────────────────── */
 .flash { display: none; border-radius: 8px; padding: 12px 16px; font-size: 14px; line-height: 1.5; }
-.flash.ok  { display: block; background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #56d364; }
-.flash.err { display: block; background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: #ff7b72; }
+.flash.ok   { display: block; background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); color: #56d364; }
+.flash.err  { display: block; background: rgba(248,81,73,0.12); border: 1px solid rgba(248,81,73,0.35); color: #ff7b72; }
+.flash.warn { display: block; background: rgba(227,179,65,0.12); border: 1px solid rgba(227,179,65,0.35); color: #e3b341; }
 
 /* ── Nickname strip on send screen ──────────────────────────────────────────── */
 .nick-strip {
@@ -321,6 +322,7 @@ const PEER_PREFIX         = 'wc-';
 const LS_NS               = 'wc.';
 const RECONNECT_BASE      = 2000;            // ms
 const RECONNECT_CAP       = 30000;           // ms
+const ACK_TIMEOUT_MS      = 5000;            // wait this long for host photo-ack
 
 // ── localStorage helper ───────────────────────────────────────────────────────
 const store = (() => {
@@ -409,6 +411,9 @@ async function sendPhoto(blob, onProgress) {
   const photoId     = crypto.randomUUID();
   const nick        = nickDisplayEl.value.trim() || null;
 
+  // Register before photo-start so an early photo-rejected (too-large / busy)
+  // arriving mid-send is not missed.
+  beginAckWait(photoId);
   conn.send({ type: 'photo-start', id: photoId, totalChunks, size: ab.byteLength, nick });
 
   for (let i = 0; i < totalChunks; i++) {
@@ -444,9 +449,51 @@ let _flashTimer;
 function showFlash(msg, type = 'ok') {
   flashEl.className   = 'flash ' + type;
   flashEl.textContent = msg;
-  if (type === 'ok') {
-    clearTimeout(_flashTimer);
+  clearTimeout(_flashTimer);
+  if (type === 'ok' || type === 'warn') {
     _flashTimer = setTimeout(() => { flashEl.className = 'flash'; }, 3500);
+  }
+}
+
+// ── Host ack / reject handling ────────────────────────────────────────────────
+// AIDEV- the wall replies with photo-ack (photo shown) or photo-rejected
+// (reason: limit | too-large | busy). Success is only shown after photo-ack so
+// guests don't see a false "sent" when the wall blocked the photo. If neither
+// arrives within ACK_TIMEOUT_MS (e.g. older wall version without acks), fall
+// back to the optimistic message as a warning.
+const REJECT_MESSAGES = {
+  'limit':     'Wall is full — ask the host to upgrade.',
+  'too-large': 'Photo too large after compression — try another.',
+  'busy':      'Wall is busy — try again in a moment.'
+};
+
+let ackWait = { id: null, timer: null, done: false };
+
+function beginAckWait(photoId) {
+  clearTimeout(ackWait.timer);
+  ackWait = { id: photoId, timer: null, done: false };
+}
+
+function armAckTimeout() {
+  if (!ackWait.id || ackWait.done) return;
+  ackWait.timer = setTimeout(() => {
+    if (ackWait.done) return;
+    ackWait.done = true;
+    showFlash('✅ Photo sent — the wall didn\'t confirm it arrived.', 'warn');
+  }, ACK_TIMEOUT_MS);
+}
+
+function handleHostMessage(msg) {
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.id !== ackWait.id || ackWait.done) return;
+  if (msg.type === 'photo-ack') {
+    ackWait.done = true;
+    clearTimeout(ackWait.timer);
+    showFlash('🎉 On the wall!');
+  } else if (msg.type === 'photo-rejected') {
+    ackWait.done = true;
+    clearTimeout(ackWait.timer);
+    showFlash('⛔ ' + (REJECT_MESSAGES[msg.reason] || 'Photo was rejected by the wall.'), 'err');
   }
 }
 
@@ -488,11 +535,15 @@ function connectToWall(rc) {
   conn = peer.connect(PEER_PREFIX + rc, { reliable: true, serialization: 'binary' });
 
   conn.on('open', () => {
+    // AIDEV- reset backoff on every successful (re)connect so the next drop
+    // retries at 2 s again instead of the previously accumulated delay.
     reconnectAttempts = 0;
     clearTimeout(reconnectTimer);
     setConnState('connected');
     showSendScreen(rc);
   });
+
+  conn.on('data', msg => handleHostMessage(msg));
 
   conn.on('error', err => {
     console.warn('[wallcast] conn error:', err);
@@ -583,7 +634,12 @@ btnSendEl.addEventListener('click', async () => {
     setProgress(1);
     setTimeout(() => {
       clearPreview();
-      showFlash('✅ Photo sent to wall!');
+      // Success ("On the wall!") is shown only when the host acks; if the host
+      // already rejected mid-send, keep that error flash on screen.
+      if (!ackWait.done) {
+        showFlash('📤 Sent — waiting for the wall…', 'warn');
+        armAckTimeout();
+      }
       isSending            = false;
       btnSendEl.disabled   = false;
       btnRetakeEl.disabled = false;
