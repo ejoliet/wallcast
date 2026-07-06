@@ -307,7 +307,7 @@ html, body {
   <div class="footer">made with wallcast</div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script src="vendor/peerjs.min.js"></script>
 <script>
 'use strict';
 
@@ -413,11 +413,11 @@ async function sendPhoto(blob, onProgress) {
 
   for (let i = 0; i < totalChunks; i++) {
     // AIDEV- backpressure: spin-yield until DataChannel buffer drains
-    if (conn.dataChannel) {
-      while (conn.dataChannel.bufferedAmount > BACKPRESSURE_PAUSE) {
-        await sleep(25);
-      }
+    while (conn.dataChannel && conn.dataChannel.bufferedAmount > BACKPRESSURE_PAUSE) {
+      await sleep(25);
     }
+    // Abort early if connection dropped during backpressure wait
+    if (!conn || !conn.open) throw new Error('Connection lost during send');
     conn.send({
       type:  'photo-chunk',
       id:    photoId,

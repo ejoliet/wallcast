@@ -404,8 +404,8 @@ body.slideshow #slideshow { display: block; }
   </div>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="vendor/peerjs.min.js"></script>
+<script src="vendor/qrcode.min.js"></script>
 <script>
 'use strict';
 
@@ -507,9 +507,11 @@ function applyLicense() {
 // ── Room init ─────────────────────────────────────────────────────────────────
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omit O/0 I/1
-  let c = '';
-  for (let i = 0; i < 6; i++) c += chars[crypto.getRandomValues(new Uint8Array(1))[0] % chars.length];
-  return c;
+  const buf   = new Uint32Array(6);
+  crypto.getRandomValues(buf);
+  // AIDEV- divide Uint32 by 2^32 → uniform float in [0,1); multiply by length
+  // avoids modulo bias present when 256 % chars.length !== 0
+  return Array.from(buf, n => chars[Math.floor(n / 0x100000000 * chars.length)]).join('');
 }
 
 function joinUrl(roomCode) {
@@ -605,7 +607,7 @@ function handleChunk(msg) {
     const p = pendingMap.get(msg.id);
     pendingMap.delete(msg.id);
     if (!p || p.received !== p.totalChunks) {
-      console.warn('[wallcast] incomplete photo dropped:', msg.id, p?.received, '/', p?.totalChunks);
+      console.warn('[wallcast] incomplete photo dropped:', msg.id, p ? p.received : 0, '/', p ? p.totalChunks : '?');
       return;
     }
     const blob = new Blob(p.chunks, { type: 'image/jpeg' });
@@ -731,8 +733,8 @@ function checkPendingBar() {
 }
 
 // ── Slideshow (Ken Burns) ─────────────────────────────────────────────────────
-// AIDEV- cross-fades between slides every 7 s; advances to a new random slide to
-// avoid predictable cycling when many photos exist.
+// AIDEV- cross-fades between slides every 7 s in sequential order;
+// cycles back to the first slide after the last one.
 function startSlideshow() {
   advanceSlide();
   ssTimer = setInterval(advanceSlide, 7000);

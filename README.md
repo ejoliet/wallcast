@@ -109,6 +109,8 @@ Open `spike.html` in any modern browser. Click **Run Spike**. It simulates 10 co
 wall.html          Host page — open on TV / laptop
 join.html          Guest page — open on phones
 spike.html         Spike test: 10 concurrent senders
+vendor/peerjs.min.js    PeerJS 1.5.5 (vendored, no CDN dependency)
+vendor/qrcode.min.js    QRCode.js (vendored)
 keys/gen.js        License key generator (Node.js ≥ 18)
 keys/private.pem   GITIGNORED — your signing key
 keys/public.pem    GITIGNORED — your public key (for reference)
