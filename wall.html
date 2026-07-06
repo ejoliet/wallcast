@@ -754,7 +754,10 @@ function addToSlideshow(photo) {
 
 function hidePhoto(id) {
   const ph = photos.find(p => p.id === id);
-  if (ph) ph.hidden = true;
+  // AIDEV- hidden photos are never re-shown, so release the Blob URL here to
+  // avoid leaking image memory over a long event; deletePhoto re-revoking the
+  // same URL later is a harmless no-op.
+  if (ph) { ph.hidden = true; URL.revokeObjectURL(ph.url); }
   wallEl.querySelector(`[data-id="${id}"]`)?.remove();
   ssEl.querySelector(`[data-id="${id}"]`)?.remove();
   updatePhotoCount();
