@@ -78,7 +78,9 @@ node keys/gen.js --verify <key-string>
 
 ## Running the spike test
 
-Open `spike.html` in any modern browser. Click **Run Spike**. It simulates 10 concurrent senders each sending a 2–5 MB synthetic image through the chunking + backpressure engine and reports PASS/FAIL.
+`spike.html` validates chunking and backpressure logic against a mocked DataChannel; real-device LAN test (2+ phones) is the acceptance gate.
+
+Open `spike.html` in any modern browser. Click **Run Spike**. It simulates 10 concurrent senders each sending a 2–5 MB synthetic image through the chunking + backpressure engine, plus abuse cases (oversize declaration, duplicate chunk index, per-guest pending cap), and reports PASS/FAIL.
 
 ```
 🟢 SPIKE PASSED — 10 images, zero dropped, zero corrupt
@@ -100,6 +102,32 @@ Open `spike.html` in any modern browser. Click **Run Spike**. It simulates 10 co
 | Moderation | Optional approve-before-show queue |
 | License | Ed25519 offline sign (Node), Web Crypto verify (browser) |
 | Storage | `localStorage` (`wc.*` namespace), in-memory fallback |
+
+---
+
+## Known limits
+
+The wall enforces per-guest resource caps so a hostile or buggy guest can't exhaust host tab memory:
+
+| Limit | Value |
+|-------|-------|
+| Max photo size (post-compression) | **8 MB** (`MAX_PHOTO_BYTES`) |
+| Max chunks per photo | **512** (`MAX_CHUNKS`, 512 × 16 KB = 8 MB) |
+| Max concurrent transfers per guest | 2 (`MAX_PENDING_PER_GUEST`) |
+| Photos per wall (free tier) | 20 |
+| Room code lifetime | 24 h (auto-regenerated on wall load; "New room" button forces a fresh code) |
+
+### `photo-rejected` reasons
+
+When the wall refuses a photo it replies to the sending guest with `{ type: 'photo-rejected', id, reason }`:
+
+| Reason | Meaning | Guest message |
+|--------|---------|---------------|
+| `limit` | Free-tier photo cap reached | "Wall is full — ask the host to upgrade." |
+| `too-large` | Declared size > 8 MB, > 512 chunks, invalid size/chunk fields, or more bytes streamed than declared | "Photo too large after compression — try another." |
+| `busy` | Guest already has 2 transfers in flight | "Wall is busy — try again in a moment." |
+
+On success the wall replies `{ type: 'photo-ack', id }`; the guest shows "On the wall!" only after receiving the ack (with a warning fallback if no ack arrives within 5 s).
 
 ---
 
