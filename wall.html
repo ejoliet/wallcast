@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Wallcast – Live Photo Wall</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; overflow: hidden; background: #0a0a0a; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+
+/* ── Masonry wall ──────────────────────────────────────────────────────────── */
+#wall {
+  position: absolute;
+  inset: 0;
+  column-count: 4;
+  column-gap: 6px;
+  padding: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+@media (max-width: 1400px) { #wall { column-count: 3; } }
+@media (max-width: 900px)  { #wall { column-count: 2; } }
+
+.photo-item {
+  break-inside: avoid;
+  margin-bottom: 6px;
+  position: relative;
+  cursor: pointer;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #111;
+}
+
+.photo-item img {
+  width: 100%;
+  display: block;
+  border-radius: 5px;
+}
+
+.photo-item .photo-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.18s;
+  border-radius: 5px;
+}
+.photo-item:hover .photo-overlay { opacity: 1; }
+
+.photo-item .photo-overlay button {
+  background: rgba(30,30,30,0.9);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+  padding: 6px 13px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.photo-item .photo-overlay button:hover { background: rgba(60,60,60,0.95); }
+.photo-item .photo-overlay button.del-btn:hover { background: rgba(200,50,50,0.85); }
+
+@keyframes photoIn {
+  from { opacity: 0; transform: scale(0.9) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.photo-item { animation: photoIn 0.35s ease-out; }
+
+/* ── Slideshow / Ken Burns ─────────────────────────────────────────────────── */
+#slideshow {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #000;
+}
+body.slideshow #wall      { display: none; }
+body.slideshow #slideshow { display: block; }
+
+#slideshow .slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 1.2s ease-in-out;
+}
+#slideshow .slide.active {
+  opacity: 1;
+  /* AIDEV- ken-burns: slow zoom + pan animation on each slide */
+  animation: kenBurns 9s ease-in-out forwards;
+}
+
+@keyframes kenBurns {
+  0%   { transform: scale(1)    translate(0%,  0%); }
+  100% { transform: scale(1.12) translate(-2%, -1.5%); }
+}
+
+/* ── HUD overlay ───────────────────────────────────────────────────────────── */
+#hud {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  z-index: 50;
+}
+#hud > * { pointer-events: auto; }
+
+/* ── Room panel (QR + code) ─────────────────────────────────────────────────── */
+#room-panel {
+  background: rgba(10,10,10,0.78);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  min-width: 160px;
+}
+
+#room-label {
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+#room-code {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 7px;
+  font-family: 'Courier New', monospace;
+  line-height: 1;
+}
+
+#qr { width: 128px; height: 128px; }
+#qr canvas, #qr img { border-radius: 5px; }
+
+#join-hint {
+  font-size: 10px;
+  opacity: 0.4;
+  max-width: 152px;
+  text-align: center;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* ── Controls panel ─────────────────────────────────────────────────────────── */
+#controls-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.ctrl-btn {
+  background: rgba(20,20,20,0.8);
+  color: #ddd;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 8px 15px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.ctrl-btn:hover  { background: rgba(40,40,40,0.9); }
+.ctrl-btn.active { background: rgba(255,180,0,0.2); border-color: rgba(255,180,0,0.45); color: #ffd966; }
+
+#peer-status {
+  font-size: 11px;
+  opacity: 0.45;
+  text-align: right;
+  padding-right: 2px;
+  transition: color 0.3s;
+}
+
+/* ── Pending moderation bar ────────────────────────────────────────────────── */
+#pending-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(10,10,10,0.92);
+  border-top: 1px solid rgba(255,180,0,0.3);
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  z-index: 60;
+  scrollbar-width: thin;
+}
+#pending-bar.hidden { display: none; }
+
+.pending-thumb {
+  flex: 0 0 72px;
+  height: 72px;
+  border-radius: 5px;
+  overflow: hidden;
+  position: relative;
+  border: 2px solid rgba(255,180,0,0.5);
+}
+.pending-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pending-thumb .thumb-actions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(0,0,0,0.45);
+}
+.pending-thumb button {
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 18px;
+  padding: 2px 5px;
+  background: rgba(0,0,0,0.55);
+  line-height: 1;
+}
+
+/* ── Free-tier badge ─────────────────────────────────────────────────────────── */
+#badge {
+  position: fixed;
+  bottom: 10px;
+  right: 14px;
+  font-size: 11px;
+  opacity: 0.35;
+  z-index: 55;
+  pointer-events: auto;
+}
+#badge a { color: inherit; text-decoration: none; }
+#badge a:hover { text-decoration: underline; opacity: 0.8; }
+
+/* ── Photo count ─────────────────────────────────────────────────────────────── */
+#photo-count {
+  position: fixed;
+  bottom: 10px;
+  left: 14px;
+  font-size: 11px;
+  opacity: 0.35;
+  z-index: 55;
+}
+
+/* ── Toast ───────────────────────────────────────────────────────────────────── */
+#toast {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15,15,15,0.9);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #ddd;
+  padding: 9px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 200;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.4s;
+  white-space: nowrap;
+}
+#toast.hidden { opacity: 0; }
+
+/* ── Upgrade banner ──────────────────────────────────────────────────────────── */
+#upgrade-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 150;
+  background: linear-gradient(90deg, #e67e22, #e74c3c);
+  color: #fff;
+  text-align: center;
+  padding: 13px 40px;
+  font-size: 14px;
+  font-weight: 600;
+}
+#upgrade-banner.hidden { display: none; }
+#upgrade-banner a { color: #fff; }
+#upgrade-banner .close-banner {
+  position: absolute;
+  right: 14px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none; color: #fff;
+  font-size: 20px; cursor: pointer; line-height: 1;
+}
+
+/* ── License modal ───────────────────────────────────────────────────────────── */
+#license-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+#license-modal.hidden { display: none; }
+
+#license-box {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  padding: 30px 32px;
+  max-width: 400px;
+  width: 92%;
+}
+#license-box h2 { font-size: 18px; margin-bottom: 6px; }
+#license-box .desc { opacity: 0.65; font-size: 13px; margin-bottom: 20px; line-height: 1.5; }
+
+#license-input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 11px 13px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+#license-input:focus { border-color: #388bfd; }
+
+#license-actions { display: flex; gap: 9px; }
+#license-actions button {
+  flex: 1; padding: 11px; border: none; border-radius: 7px;
+  cursor: pointer; font-size: 14px; font-weight: 600;
+}
+#btn-activate { background: #238636; color: #fff; }
+#btn-activate:hover { background: #2ea043; }
+#btn-cancel   { background: #21262d; color: #c9d1d9; }
+#btn-cancel:hover { background: #30363d; }
+#license-msg  { margin-top: 12px; font-size: 13px; min-height: 20px; }
+</style>
+</head>
+<body>
+
+<!-- Masonry wall -->
+<div id="wall"></div>
+
+<!-- Ken Burns slideshow -->
+<div id="slideshow"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="room-panel">
+    <div id="room-label">Scan to join</div>
+    <div id="room-code">——————</div>
+    <div id="qr"></div>
+    <div id="join-hint"></div>
+  </div>
+
+  <div id="controls-panel">
+    <button class="ctrl-btn" id="btn-layout">⊞ Masonry</button>
+    <button class="ctrl-btn" id="btn-moderate">🛡 Auto-show</button>
+    <button class="ctrl-btn" id="btn-newroom">🔄 New room</button>
+    <button class="ctrl-btn" id="btn-unlock">🔑 Unlock Pro</button>
+    <div id="peer-status">Connecting…</div>
+  </div>
+</div>
+
+<!-- Moderation queue -->
+<div id="pending-bar" class="hidden"></div>
+
+<!-- Footer -->
+<div id="badge">made with <a href="https://github.com/ejoliet/wallcast" target="_blank">wallcast</a></div>
+<div id="photo-count"></div>
+
+<!-- Toast -->
+<div id="toast" class="hidden"></div>
+
+<!-- Upgrade banner -->
+<div id="upgrade-banner" class="hidden">
+  📸 Free tier: 20 photos reached.
+  <a href="#" id="upgrade-link">Unlock unlimited →</a>
+  <button class="close-banner" onclick="this.parentElement.classList.add('hidden')">✕</button>
+</div>
+
+<!-- License modal -->
+<div id="license-modal" class="hidden">
+  <div id="license-box">
+    <h2>🔑 Unlock Wallcast Pro</h2>
+    <p class="desc">Enter your license key to remove the 20-photo limit and hide the badge.</p>
+    <input id="license-input" type="text" placeholder="Paste license key…" autocomplete="off" spellcheck="false">
+    <div id="license-actions">
+      <button id="btn-activate">Activate</button>
+      <button id="btn-cancel">Cancel</button>
+    </div>
+    <div id="license-msg"></div>
+  </div>
+</div>
+
+<script src="vendor/peerjs.min.js"></script>
+<script src="vendor/qrcode.min.js"></script>
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const FREE_LIMIT  = 20;
+const LS_NS       = 'wc.';
+const PEER_PREFIX = 'wc-';
+const CHUNK_SIZE  = 16 * 1024;               // must match join.html sender
+
+// AIDEV- DoS hardening: the wall accepts unauthenticated data from any guest that
+// knows the room code. Without caps, a hostile (or buggy) guest could declare a
+// huge size/totalChunks in photo-start, or open unbounded parallel transfers, and
+// exhaust host tab memory. These limits bound worst-case memory to
+// MAX_PENDING_PER_GUEST × MAX_PHOTO_BYTES per guest.
+const MAX_PHOTO_BYTES       = 8 * 1024 * 1024;   // hard cap per photo
+const MAX_CHUNKS            = 512;               // 512 × 16 KB = 8 MB
+const MAX_PENDING_PER_GUEST = 2;                 // concurrent transfers per guest
+
+// AIDEV- room codes expire after 24 h so the QR from a previous event cannot
+// post photos onto a new event's wall (see initRoom).
+const ROOM_CODE_TTL_MS = 24 * 60 * 60 * 1000;
+
+// AIDEV- Ed25519 public key (SPKI DER, base64) for offline license verification.
+// Generated by `node keys/gen.js --init`. Replace with your own key for production.
+// Run `node keys/gen.js --init`, copy the printed base64 here, then re-deploy wall.html.
+const PUBLIC_KEY_B64 = 'MCowBQYDK2VwAyEAiXB+/E/gvoPtsUOE5JtRrOHLniSpacDR2R1Qx0e72Ag=';
+// AIDEV- warn operators if the demo public key has not been replaced
+const _DEMO_KEY = 'MCowBQYDK2VwAyEAiXB+/E/gvoPtsUOE5JtRrOHLniSpacDR2R1Qx0e72Ag=';
+if (PUBLIC_KEY_B64 === _DEMO_KEY) {
+  console.warn('[wallcast] Using default demo public key. Run `node keys/gen.js --init` and embed your own PUBLIC_KEY_B64 before accepting real license payments.');
+}
+
+// ── localStorage helper (in-memory fallback) ──────────────────────────────────
+const store = (() => {
+  const mem = {};
+  let hasLS = false;
+  try { localStorage.setItem('wc.__t','1'); localStorage.removeItem('wc.__t'); hasLS = true; } catch {}
+  return {
+    get(k)    { try { return hasLS ? JSON.parse(localStorage.getItem(LS_NS + k)) : mem[k] ?? null; } catch { return null; } },
+    set(k, v) { try { hasLS ? localStorage.setItem(LS_NS + k, JSON.stringify(v)) : (mem[k] = v); } catch {} },
+    del(k)    { try { hasLS ? localStorage.removeItem(LS_NS + k) : delete mem[k]; } catch {} }
+  };
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let peer         = null;
+let photos       = [];          // { id, url, hidden }
+let pendingMap   = new Map();   // `${peerId}|${photoId}` → { chunks[], totalChunks, received, receivedBytes, size, nick, peerId }
+let connections  = new Map();   // peerId  → DataConnection
+let moderate     = false;
+let slideshow    = false;
+let licensed     = false;
+let ssTimer      = null;
+let ssIdx        = 0;
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const wallEl         = document.getElementById('wall');
+const ssEl           = document.getElementById('slideshow');
+const roomCodeEl     = document.getElementById('room-code');
+const qrEl           = document.getElementById('qr');
+const joinHintEl     = document.getElementById('join-hint');
+const peerStatusEl   = document.getElementById('peer-status');
+const badgeEl        = document.getElementById('badge');
+const toastEl        = document.getElementById('toast');
+const photoCountEl   = document.getElementById('photo-count');
+const pendingBarEl   = document.getElementById('pending-bar');
+const licenseModalEl = document.getElementById('license-modal');
+const licenseInputEl = document.getElementById('license-input');
+const licenseMsgEl   = document.getElementById('license-msg');
+const upgradeBannerEl= document.getElementById('upgrade-banner');
+const btnLayout      = document.getElementById('btn-layout');
+const btnModerate    = document.getElementById('btn-moderate');
+const btnUnlock      = document.getElementById('btn-unlock');
+
+// ── ZzFX — minimal synthesised chime ─────────────────────────────────────────
+// AIDEV- ZzFX micro-library for photo-arrived audio cue; no external deps.
+let _zzCtx;
+function chime() {
+  try {
+    _zzCtx = _zzCtx || new AudioContext();
+    const sr = _zzCtx.sampleRate;
+    const len = sr * 0.18 | 0;
+    const buf = _zzCtx.createBuffer(1, len, sr);
+    const d   = buf.getChannelData(0);
+    let   f   = 0;
+    for (let i = 0; i < len; i++) {
+      d[i] = Math.sin(f += (880 * 2 * Math.PI) / sr) * (1 - i / len) * 0.3;
+    }
+    const src = _zzCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_zzCtx.destination);
+    src.start();
+  } catch {}
+}
+
+// ── License verification (Web Crypto Ed25519) ─────────────────────────────────
+// AIDEV- verifies Ed25519 signature offline using baked-in public key.
+// Web Crypto Ed25519 requires Chrome 113+, Firefox 129+, Safari 17+.
+async function verifyLicense(keyStr) {
+  try {
+    const { data, sig } = JSON.parse(atob(keyStr.trim()));
+    const pubBytes  = Uint8Array.from(atob(PUBLIC_KEY_B64), c => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      'spki', pubBytes.buffer, { name: 'Ed25519' }, false, ['verify']
+    );
+    const dataBytes = Uint8Array.from(atob(data), c => c.charCodeAt(0));
+    const sigBytes  = Uint8Array.from(atob(sig),  c => c.charCodeAt(0));
+    return await crypto.subtle.verify({ name: 'Ed25519' }, cryptoKey, sigBytes, dataBytes);
+  } catch { return false; }
+}
+
+function applyLicense() {
+  licensed = true;
+  badgeEl.style.display   = 'none';
+  upgradeBannerEl.classList.add('hidden');
+  updatePhotoCount();
+}
+
+// ── Room init ─────────────────────────────────────────────────────────────────
+function genRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // omit O/0 I/1
+  const buf   = new Uint32Array(6);
+  crypto.getRandomValues(buf);
+  // AIDEV- divide Uint32 by 2^32 → uniform float in [0,1); multiply by length
+  // avoids modulo bias present when 256 % chars.length !== 0
+  return Array.from(buf, n => chars[Math.floor(n / 0x100000000 * chars.length)]).join('');
+}
+
+function joinUrl(roomCode) {
+  const base = location.href.replace(/wall\.html.*$/, '');
+  return `${base}join.html?room=${roomCode}`;
+}
+
+function initRoom() {
+  // AIDEV- room codes are stored as { code, createdAt } and expire after 24 h:
+  // prevents the QR code printed/scanned at the last event from posting photos
+  // onto this event's wall. Legacy plain-string values are treated as expired.
+  let roomCode = null;
+  const saved = store.get('roomCode');
+  if (saved && typeof saved === 'object' && typeof saved.code === 'string' &&
+      Number.isFinite(saved.createdAt) && Date.now() - saved.createdAt < ROOM_CODE_TTL_MS) {
+    roomCode = saved.code;
+  }
+  if (!roomCode) {
+    roomCode = genRoomCode();
+    store.set('roomCode', { code: roomCode, createdAt: Date.now() });
+  }
+
+  roomCodeEl.textContent = roomCode;
+  const url = joinUrl(roomCode);
+  joinHintEl.textContent = url;
+
+  // QR code
+  try {
+    new QRCode(qrEl, { text: url, width: 128, height: 128, colorDark: '#ffffff', colorLight: '#000000' });
+  } catch {
+    qrEl.textContent = url;
+  }
+
+  startPeer(roomCode);
+}
+
+// ── PeerJS hub ────────────────────────────────────────────────────────────────
+function startPeer(roomCode) {
+  const peerId = PEER_PREFIX + roomCode;
+  peer = new Peer(peerId, { debug: 0 });
+
+  peer.on('open', () => {
+    setPeerStatus(`● 0 guests`, '#4caf50');
+  });
+
+  peer.on('connection', conn => setupConn(conn));
+
+  peer.on('error', err => {
+    console.warn('[wallcast] PeerJS error:', err.type, err.message);
+    setPeerStatus('⚠ ' + (err.type || err.message), '#f90');
+    // AIDEV- if peer ID already taken (duplicate wall tab), regenerate room code
+    if (err.type === 'unavailable-id') {
+      store.del('roomCode');
+      setTimeout(() => location.reload(), 800);
+    }
+  });
+
+  peer.on('disconnected', () => {
+    setPeerStatus('⟳ Reconnecting…', '#f90');
+    // AIDEV- PeerJS.reconnect() restores signaling channel without losing DataConnections
+    peer.reconnect();
+  });
+}
+
+function setupConn(conn) {
+  connections.set(conn.peer, conn);
+  refreshGuestCount();
+
+  conn.on('data',  msg  => handleChunk(msg, conn));
+  conn.on('close', ()   => { dropGuestPending(conn.peer); connections.delete(conn.peer); refreshGuestCount(); });
+  conn.on('error', err  => { console.warn('[wallcast] conn error:', err); dropGuestPending(conn.peer); connections.delete(conn.peer); refreshGuestCount(); });
+}
+
+// AIDEV- free partially-received transfers when a guest disconnects, otherwise
+// abandoned pendingMap entries would leak memory and count against the guest's
+// pending cap forever.
+function dropGuestPending(peerId) {
+  for (const [key, p] of pendingMap) {
+    if (p.peerId === peerId) pendingMap.delete(key);
+  }
+}
+
+function refreshGuestCount() {
+  const n = connections.size;
+  setPeerStatus(`● ${n} guest${n !== 1 ? 's' : ''}`, n > 0 ? '#4caf50' : '#888');
+}
+
+function setPeerStatus(text, color) {
+  peerStatusEl.textContent = text;
+  peerStatusEl.style.color = color || '#888';
+}
+
+// ── Chunk reassembly ──────────────────────────────────────────────────────────
+// AIDEV- reassembles 16 KB DataChannel chunks back into a complete image Blob.
+// Uses a sparse array indexed by chunk.index so out-of-order delivery is handled.
+// AIDEV- DoS hardening: photo-start is validated before any memory is allocated —
+// declared size/totalChunks are capped, and each guest may hold at most
+// MAX_PENDING_PER_GUEST in-flight transfers. photo-chunk accumulation is bounded
+// by the declared size (+ one chunk of slack), so a guest cannot lie in
+// photo-start and then stream unlimited bytes. pendingMap keys include the
+// sending peer id so one guest cannot interfere with (or inflate the count of)
+// another guest's transfers.
+function pendingKey(peerId, photoId) { return peerId + '|' + photoId; }
+
+function guestPendingCount(peerId) {
+  let n = 0;
+  for (const p of pendingMap.values()) if (p.peerId === peerId) n++;
+  return n;
+}
+
+function safeSend(conn, msg) {
+  try { if (conn && conn.open) conn.send(msg); } catch {}
+}
+
+function handleChunk(msg, conn) {
+  if (!msg || typeof msg !== 'object') return;
+
+  if (msg.type === 'photo-start') {
+    const sane = Number.isInteger(msg.size) && msg.size > 0 &&
+                 Number.isInteger(msg.totalChunks) && msg.totalChunks > 0;
+    if (!sane || msg.size > MAX_PHOTO_BYTES || msg.totalChunks > MAX_CHUNKS) {
+      safeSend(conn, { type: 'photo-rejected', id: msg.id, reason: 'too-large' });
+      return;
+    }
+    if (guestPendingCount(conn.peer) >= MAX_PENDING_PER_GUEST) {
+      safeSend(conn, { type: 'photo-rejected', id: msg.id, reason: 'busy' });
+      return;
+    }
+    pendingMap.set(pendingKey(conn.peer, msg.id), {
+      chunks:        new Array(msg.totalChunks),
+      totalChunks:   msg.totalChunks,
+      received:      0,
+      receivedBytes: 0,
+      size:          msg.size,
+      nick:          msg.nick || null,
+      peerId:        conn.peer
+    });
+
+  } else if (msg.type === 'photo-chunk') {
+    const key = pendingKey(conn.peer, msg.id);
+    const p   = pendingMap.get(key);
+    if (!p) return; // unknown id — ignore
+    if (!Number.isInteger(msg.index) || msg.index < 0 || msg.index >= p.totalChunks) return;
+    // AIDEV- count a chunk only once: duplicates must not advance `received`,
+    // or a photo with missing chunks could be treated as complete.
+    if (p.chunks[msg.index] !== undefined) return;
+    const bytes = (msg.data && msg.data.byteLength) || 0;
+    p.receivedBytes += bytes;
+    // AIDEV- abort if the guest streams more bytes than declared in photo-start
+    // (+ one chunk of slack for the final partial chunk).
+    if (p.receivedBytes > p.size + CHUNK_SIZE) {
+      pendingMap.delete(key);
+      safeSend(conn, { type: 'photo-rejected', id: msg.id, reason: 'too-large' });
+      return;
+    }
+    p.chunks[msg.index] = msg.data;
+    p.received++;
+
+  } else if (msg.type === 'photo-end') {
+    const key = pendingKey(conn.peer, msg.id);
+    const p   = pendingMap.get(key);
+    pendingMap.delete(key);
+    if (!p || p.received !== p.totalChunks) {
+      console.warn('[wallcast] incomplete photo dropped:', msg.id, p ? p.received : 0, '/', p ? p.totalChunks : '?');
+      return;
+    }
+    const blob = new Blob(p.chunks, { type: 'image/jpeg' });
+    const url  = URL.createObjectURL(blob);
+    receivePhoto({ id: msg.id, url, nick: p.nick }, conn);
+  }
+}
+
+// ── Photo lifecycle ───────────────────────────────────────────────────────────
+function receivePhoto({ id, url, nick }, conn) {
+  const visible = photos.filter(ph => !ph.hidden).length;
+  if (!licensed && visible >= FREE_LIMIT) {
+    toast(`⛔ Free limit (${FREE_LIMIT}) reached — guest photo blocked`);
+    upgradeBannerEl.classList.remove('hidden');
+    URL.revokeObjectURL(url);
+    // AIDEV- tell the sending guest their photo was blocked so their phone
+    // doesn't show a false "sent" success message.
+    safeSend(conn, { type: 'photo-rejected', id, reason: 'limit' });
+    return;
+  }
+
+  const photo = { id, url, hidden: false, nick };
+  photos.push(photo);
+  updatePhotoCount();
+  safeSend(conn, { type: 'photo-ack', id });
+
+  if (moderate) {
+    addToPending(photo);
+  } else {
+    addToWall(photo);
+    addToSlideshow(photo);
+    chime();
+  }
+}
+
+function addToWall(photo) {
+  const item = document.createElement('div');
+  item.className  = 'photo-item';
+  item.dataset.id = photo.id;
+
+  const img = document.createElement('img');
+  img.src   = photo.url;
+  img.alt   = photo.nick ? `Photo by ${photo.nick}` : 'Guest photo';
+  img.loading = 'lazy';
+
+  const overlay = document.createElement('div');
+  overlay.className = 'photo-overlay';
+
+  const hideBtn = document.createElement('button');
+  hideBtn.textContent = '🙈 Hide';
+  hideBtn.onclick = e => { e.stopPropagation(); hidePhoto(photo.id); };
+
+  const delBtn  = document.createElement('button');
+  delBtn.textContent = '🗑 Delete';
+  delBtn.className = 'del-btn';
+  delBtn.onclick = e => { e.stopPropagation(); deletePhoto(photo.id); };
+
+  overlay.append(hideBtn, delBtn);
+  item.append(img, overlay);
+  wallEl.prepend(item);
+}
+
+function addToSlideshow(photo) {
+  const img = document.createElement('img');
+  img.className  = 'slide';
+  img.src        = photo.url;
+  img.dataset.id = photo.id;
+  ssEl.appendChild(img);
+  if (slideshow && ssEl.querySelectorAll('.slide.active').length === 0) advanceSlide();
+}
+
+function hidePhoto(id) {
+  const ph = photos.find(p => p.id === id);
+  // AIDEV- hidden photos are never re-shown, so release the Blob URL here to
+  // avoid leaking image memory over a long event; deletePhoto re-revoking the
+  // same URL later is a harmless no-op.
+  if (ph) { ph.hidden = true; URL.revokeObjectURL(ph.url); }
+  wallEl.querySelector(`[data-id="${id}"]`)?.remove();
+  ssEl.querySelector(`[data-id="${id}"]`)?.remove();
+  updatePhotoCount();
+}
+
+function deletePhoto(id) {
+  const idx = photos.findIndex(p => p.id === id);
+  if (idx >= 0) { URL.revokeObjectURL(photos[idx].url); photos.splice(idx, 1); }
+  wallEl.querySelector(`[data-id="${id}"]`)?.remove();
+  ssEl.querySelector(`[data-id="${id}"]`)?.remove();
+  updatePhotoCount();
+}
+
+// ── Moderation queue ──────────────────────────────────────────────────────────
+function addToPending(photo) {
+  pendingBarEl.classList.remove('hidden');
+
+  const thumb = document.createElement('div');
+  thumb.className  = 'pending-thumb';
+  thumb.dataset.id = photo.id;
+
+  const img = document.createElement('img');
+  img.src = photo.url; img.alt = '';
+
+  const acts = document.createElement('div');
+  acts.className = 'thumb-actions';
+
+  const okBtn = document.createElement('button');
+  okBtn.textContent = '✅';
+  okBtn.title = 'Approve';
+  okBtn.onclick = () => { approvePhoto(photo.id); thumb.remove(); checkPendingBar(); };
+
+  const rejBtn = document.createElement('button');
+  rejBtn.textContent = '❌';
+  rejBtn.title = 'Reject';
+  rejBtn.onclick = () => { deletePhoto(photo.id); thumb.remove(); checkPendingBar(); };
+
+  acts.append(okBtn, rejBtn);
+  thumb.append(img, acts);
+  pendingBarEl.append(thumb);
+}
+
+function approvePhoto(id) {
+  const ph = photos.find(p => p.id === id);
+  if (!ph) return;
+  addToWall(ph);
+  addToSlideshow(ph);
+  chime();
+}
+
+function checkPendingBar() {
+  if (!pendingBarEl.querySelector('.pending-thumb')) pendingBarEl.classList.add('hidden');
+}
+
+// ── Slideshow (Ken Burns) ─────────────────────────────────────────────────────
+// AIDEV- cross-fades between slides every 7 s in sequential order;
+// cycles back to the first slide after the last one.
+function startSlideshow() {
+  advanceSlide();
+  ssTimer = setInterval(advanceSlide, 7000);
+}
+
+function stopSlideshow() {
+  clearInterval(ssTimer);
+  ssEl.querySelectorAll('.slide.active').forEach(el => el.classList.remove('active'));
+}
+
+function advanceSlide() {
+  const slides = Array.from(ssEl.querySelectorAll('.slide'));
+  if (!slides.length) return;
+  const prev = ssEl.querySelector('.slide.active');
+  if (prev) prev.classList.remove('active');
+  ssIdx = (ssIdx + 1) % slides.length;
+  slides[ssIdx].classList.add('active');
+}
+
+// ── UI controls ───────────────────────────────────────────────────────────────
+btnLayout.addEventListener('click', () => {
+  slideshow = !slideshow;
+  document.body.classList.toggle('slideshow', slideshow);
+  btnLayout.textContent = slideshow ? '▶ Slideshow' : '⊞ Masonry';
+  btnLayout.classList.toggle('active', slideshow);
+  slideshow ? startSlideshow() : stopSlideshow();
+});
+
+btnModerate.addEventListener('click', () => {
+  moderate = !moderate;
+  btnModerate.textContent = moderate ? '🛡 Moderated' : '🛡 Auto-show';
+  btnModerate.classList.toggle('active', moderate);
+  if (!moderate) {
+    // Approve all items currently in queue
+    pendingBarEl.querySelectorAll('.pending-thumb').forEach(thumb => {
+      approvePhoto(thumb.dataset.id);
+      thumb.remove();
+    });
+    pendingBarEl.classList.add('hidden');
+  }
+});
+
+document.getElementById('btn-newroom').addEventListener('click', () => {
+  store.del('roomCode');
+  location.reload();
+});
+
+btnUnlock.addEventListener('click', openLicenseModal);
+document.getElementById('upgrade-link').addEventListener('click', e => { e.preventDefault(); openLicenseModal(); });
+
+function openLicenseModal() {
+  licenseModalEl.classList.remove('hidden');
+  licenseMsgEl.textContent = '';
+  licenseInputEl.focus();
+}
+
+document.getElementById('btn-activate').addEventListener('click', async () => {
+  const key = licenseInputEl.value.trim();
+  if (!key) { licenseMsgEl.style.color = '#f85149'; licenseMsgEl.textContent = 'Please enter a key.'; return; }
+  licenseMsgEl.style.color = '#888';
+  licenseMsgEl.textContent = '⏳ Verifying…';
+  const ok = await verifyLicense(key);
+  if (ok) {
+    licenseMsgEl.style.color = '#3fb950';
+    licenseMsgEl.textContent = '✅ Valid key!';
+    store.set('license', key);
+    applyLicense();
+    toast('✅ Wallcast Pro activated — unlimited photos!');
+    setTimeout(() => licenseModalEl.classList.add('hidden'), 900);
+  } else {
+    licenseMsgEl.style.color = '#f85149';
+    licenseMsgEl.textContent = '❌ Invalid license key.';
+  }
+});
+
+document.getElementById('btn-cancel').addEventListener('click', () => {
+  licenseModalEl.classList.add('hidden');
+});
+
+licenseInputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('btn-activate').click();
+});
+
+// ── Photo count ───────────────────────────────────────────────────────────────
+function updatePhotoCount() {
+  const v = photos.filter(p => !p.hidden).length;
+  photoCountEl.textContent = licensed ? `${v} photo${v !== 1 ? 's' : ''}` : `${v} / ${FREE_LIMIT} photos`;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.remove('hidden');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toastEl.classList.add('hidden'), 3500);
+}
+
+// ── Startup ───────────────────────────────────────────────────────────────────
+(async () => {
+  // Restore license
+  const savedKey = store.get('license');
+  if (savedKey) {
+    const ok = await verifyLicense(savedKey);
+    if (ok) { applyLicense(); }
+    else     { store.del('license'); }
+  }
+
+  updatePhotoCount();
+  initRoom();
+})();
+</script>
+</body>
+</html>
