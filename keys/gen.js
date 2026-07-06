@@ -33,7 +33,7 @@ if (cmd === '--init') {
   fs.mkdirSync(DIR, { recursive: true });
   fs.writeFileSync(PRIVATE_KEY_PATH, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
   // Note: file mode 0o600 is enforced on Unix/macOS only. On Windows, manually
-  // restrict access to keys/private.pem via file properties → Security → Permissions.
+  // restrict access with: icacls keys\private.pem /inheritance:r /grant:r "%USERNAME%":F
 
   const pubPem = publicKey.export({ type: 'spki', format: 'pem' });
   fs.writeFileSync(PUBLIC_KEY_PATH, pubPem);

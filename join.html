@@ -417,7 +417,7 @@ async function sendPhoto(blob, onProgress) {
       await sleep(25);
     }
     // Abort early if connection dropped during backpressure wait
-    if (!conn || !conn.open) throw new Error('Connection lost during send');
+    if (!conn || !conn.open) throw new Error('Connection lost during send. Please check your connection and try again.');
     conn.send({
       type:  'photo-chunk',
       id:    photoId,
