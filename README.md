@@ -1,5 +1,5 @@
 # wallcast
-
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/I3I5BSV5J)
 **Browser-native P2P live photo wall for events.**
 
 Guests scan a QR code, snap photos on their phones, and they appear live on the host's screen — no server storage, no accounts, no upload. Everything travels browser-to-browser via WebRTC DataChannels.
